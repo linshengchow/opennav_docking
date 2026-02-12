@@ -146,7 +146,10 @@ protected:
   // Offset for staging pose relative to dock pose
   double staging_x_offset_;
   double staging_yaw_offset_;
-
+  
+  // Flag for ensuring blind docking log message only prints once"
+  bool log_blind_docking_;
+  
   rclcpp_lifecycle::LifecycleNode::SharedPtr node_;
   std::shared_ptr<tf2_ros::Buffer> tf2_buffer_;
 };

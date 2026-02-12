@@ -28,6 +28,7 @@ void SimpleChargingDock::configure(
   tf2_buffer_ = tf;
   is_charging_ = false;
   node_ = parent.lock();
+  log_blind_docking_ = true;
   if (!node_) {
     throw std::runtime_error{"Failed to lock node"};
   }
@@ -142,6 +143,7 @@ void SimpleChargingDock::configure(
 geometry_msgs::msg::PoseStamped SimpleChargingDock::getStagingPose(
   const geometry_msgs::msg::Pose & pose, const std::string & frame)
 {
+  log_blind_docking_ = true;
   // If not using detection, set the dock pose as the given dock pose estimate
   if (!use_external_detection_pose_) {
     // This gets called at the start of docking
@@ -169,6 +171,36 @@ geometry_msgs::msg::PoseStamped SimpleChargingDock::getStagingPose(
 
 bool SimpleChargingDock::getRefinedPose(geometry_msgs::msg::PoseStamped & pose)
 {
+  // Get current robot pose relative to dock and calculate distance to dock only if a 
+  // detected dock pose had been published before 
+  if (!dock_pose_.header.frame_id.empty()){
+    geometry_msgs::msg::PoseStamped robot_pose;
+    robot_pose.header.frame_id = base_frame_id_;
+    robot_pose.header.stamp = rclcpp::Time(0);
+    
+    try {
+      tf2_buffer_->transform(robot_pose, robot_pose, dock_pose_.header.frame_id);
+    } catch (const tf2::TransformException & ex) {
+      RCLCPP_WARN(node_->get_logger(), "Could not look up robot pose for blind docking: %s", ex.what());
+      return false;
+    }
+
+    double distance_to_dock = std::hypot(
+      robot_pose.pose.position.x - dock_pose_.pose.position.x,
+      robot_pose.pose.position.y - dock_pose_.pose.position.y);
+    const double blind_zone_threshold = 0.3;
+
+    // In the blind zone, don't update dock pose from camera
+    if (distance_to_dock < blind_zone_threshold) {
+      if (log_blind_docking_){
+        RCLCPP_INFO(node_->get_logger(), "Switched to blind docking");
+        log_blind_docking_ = false;
+      }
+      pose = dock_pose_;
+      return true; 
+    }
+  }
+
   // If using not detection, set the dock pose to the static fixed-frame version
   if (!use_external_detection_pose_) {
     dock_pose_pub_->publish(pose);
@@ -182,10 +214,7 @@ bool SimpleChargingDock::getRefinedPose(geometry_msgs::msg::PoseStamped & pose)
   // Validate that external pose is new enough
   auto timeout = rclcpp::Duration::from_seconds(external_detection_timeout_);
   if (node_->now() - detected.header.stamp > timeout) {
-    RCLCPP_WARN(
-      node_->get_logger(), "Lost detection or did not detect: "
-      "timeout exceeded (is %2.2f seconds old)",
-      static_cast<float>((node_->now() - detected.header.stamp).seconds()));
+    RCLCPP_WARN(node_->get_logger(), "Lost detection or did not detect: timeout exceeded");
     return false;
   }
 
@@ -198,19 +227,12 @@ bool SimpleChargingDock::getRefinedPose(geometry_msgs::msg::PoseStamped & pose)
           pose.header.frame_id, detected.header.frame_id,
           detected.header.stamp, rclcpp::Duration::from_seconds(0.2)))
       {
-        RCLCPP_WARN(
-          node_->get_logger(), "Failed to transform detected dock pose: "
-          "cannot transform %s to %s (at time %2.2f s)",
-          detected.header.frame_id.c_str(),
-          pose.header.frame_id.c_str(),
-          static_cast<float>(
-            detected.header.stamp.sec + detected.header.stamp.nanosec * 1e-9
-        ));
+        RCLCPP_WARN(node_->get_logger(), "Failed to transform detected dock pose");
         return false;
       }
       tf2_buffer_->transform(detected, detected, pose.header.frame_id);
     } catch (const tf2::TransformException & ex) {
-      RCLCPP_WARN(node_->get_logger(), "Failed to transform detected dock pose: %s", ex.what());
+      RCLCPP_WARN(node_->get_logger(), "Failed to transform detected dock pose");
       return false;
     }
   }
