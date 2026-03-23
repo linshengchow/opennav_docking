@@ -646,7 +646,7 @@ void DockingServer::undockRobot()
     // Make sure that the staging pose is pointing in the same direction when moving backwards
     if (dock_backwards_) {
       dock_pose.pose.orientation = nav2_util::geometry_utils::orientationAroundZAxis(
-        tf2::getYaw(dock_pose.pose.orientation) + M_PI);
+        tf2::getYaw(dock_pose.pose.orientation) + 0);
     }
 
     // Get staging pose (in fixed frame)
