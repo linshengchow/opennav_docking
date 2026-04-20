@@ -149,6 +149,9 @@ protected:
   
   // Flag for ensuring blind docking log message only prints once"
   bool log_blind_docking_;
+
+  // Threshold for blind docking
+  double blind_docking_threshold_;
   
   rclcpp_lifecycle::LifecycleNode::SharedPtr node_;
   std::shared_ptr<tf2_ros::Buffer> tf2_buffer_;

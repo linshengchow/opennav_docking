@@ -79,6 +79,10 @@ void SimpleChargingDock::configure(
   nav2_util::declare_parameter_if_not_declared(
     node_, name + ".staging_yaw_offset", rclcpp::ParameterValue(0.0));
 
+  // Blind docking threshold
+  nav2_util::declare_parameter_if_not_declared(
+    node_, name + ".blind_docking_threshold", rclcpp::ParameterValue(0.3));
+
   node_->get_parameter(name + ".use_battery_status", use_battery_status_);
   node_->get_parameter(name + ".use_external_detection_pose", use_external_detection_pose_);
   node_->get_parameter(name + ".external_detection_timeout", external_detection_timeout_);
@@ -98,6 +102,7 @@ void SimpleChargingDock::configure(
   node_->get_parameter(name + ".staging_x_offset", staging_x_offset_);
   node_->get_parameter(name + ".staging_yaw_offset", staging_yaw_offset_);
   node_->get_parameter("base_frame", base_frame_id_);  // Get server base frame ID
+  node_->get_parameter(name + ".blind_docking_threshold", blind_docking_threshold_);
 
   // Setup filter
   double filter_coef;
@@ -188,10 +193,9 @@ bool SimpleChargingDock::getRefinedPose(geometry_msgs::msg::PoseStamped & pose)
     double distance_to_dock = std::hypot(
       robot_pose.pose.position.x - dock_pose_.pose.position.x,
       robot_pose.pose.position.y - dock_pose_.pose.position.y);
-    const double blind_zone_threshold = 0.3;
 
     // In the blind zone, don't update dock pose from camera
-    if (distance_to_dock < blind_zone_threshold) {
+    if (distance_to_dock < blind_docking_threshold_) {
       if (log_blind_docking_){
         RCLCPP_INFO(node_->get_logger(), "Switched to blind docking");
         log_blind_docking_ = false;
